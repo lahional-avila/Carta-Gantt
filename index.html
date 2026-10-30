@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carta Gantt Anual — Bodega</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449;
+    --accent:#38bdf8; --accent2:#22c55e; --danger:#ef4444;
+    --warn:#f59e0b; --text:#e2e8f0; --muted:#94a3b8;
+    --border:#334155; --bar:#38bdf8; --holiday:#f43f5e;
+  }
+  *{box-sizing:border-box;}
+  html,body{overflow-x:hidden;}
+  body{
+    margin:0; font-family:'Segoe UI',Roboto,Arial,sans-serif;
+    background:linear-gradient(135deg,#0f172a,#1e293b);
+    color:var(--text); min-height:100vh;
+    display:flex; flex-direction:column;
+  }
+  .app{display:flex; flex:1; min-height:0;}
+
+  .hamburger-btn{
+    position:fixed; top:16px; left:16px; z-index:1000;
+    width:44px; height:44px;
+    background:var(--accent); color:#0f172a;
+    border:none; border-radius:10px;
+    font-size:1.4rem; cursor:pointer;
+    box-shadow:0 4px 14px rgba(56,189,248,.4);
+    transition:.2s; display:flex; align-items:center; justify-content:center;
+  }
+  .hamburger-btn:hover{filter:brightness(1.15); transform:scale(1.05);}
+  .hamburger-btn:active{transform:scale(.95);}
+
+  .sidebar{
+    width:330px; background:var(--panel);
+    border-right:1px solid var(--border);
+    padding:70px 16px 16px 16px;
+    display:flex; flex-direction:column; gap:12px;
+    overflow-y:auto; max-height:100vh;
+    position:sticky; top:0;
+    transition:margin-left .3s ease;
+    flex-shrink:0;
+  }
+  .sidebar.hidden{margin-left:-330px;}
+  .sidebar-content{display:flex; flex-direction:column; gap:14px;}
+
+  .section{
+    background:var(--panel2); border:1px solid var(--border);
+    border-radius:10px; padding:12px;
+  }
+  .section h3{
+    margin:0 0 8px 0; font-size:.82rem;
+    color:var(--accent2); text-transform:uppercase; letter-spacing:.5px;
+  }
+  .section input,.section select,.section button{
+    width:100%; margin-bottom:6px; font-family:inherit;
+    font-size:.82rem; padding:7px 8px;
+    border-radius:6px; border:1px solid var(--border);
+    background:#1b2536; color:var(--text); outline:none;
+  }
+  .section input:focus,.section select:focus{border-color:var(--accent);}
+  .section button{
+    cursor:pointer; background:var(--accent); color:#0f172a;
+    font-weight:600; border:none; transition:.2s; margin-top:4px;
+  }
+  .section button:hover{filter:brightness(1.15);}
+  .section button.danger{background:var(--danger); color:#fff;}
+  .section button.success{background:var(--accent2); color:#0f172a;}
+  .section button.ghost{background:transparent; border:1px solid var(--border); color:var(--text);}
+  .mini-list{font-size:.72rem; color:var(--muted); max-height:110px; overflow-y:auto; margin-top:6px;}
+  .mini-list div{padding:3px 0; border-bottom:1px dashed var(--border); display:flex; justify-content:space-between; gap:6px;}
+  .mini-list div:last-child{border-bottom:none;}
+  .mini-list .del{color:var(--danger); cursor:pointer; font-weight:bold;}
+
+  .main{flex:1; padding:70px 20px 20px 20px; overflow-x:auto; min-width:0; display:flex; flex-direction:column;}
+  .header{
+    display:flex; justify-content:center; align-items:center;
+    flex-wrap:wrap; gap:10px; margin-bottom:16px;
+    padding-bottom:12px; border-bottom:2px solid var(--border);
+  }
+  .title-editable{
+    display:inline-block; margin:0; padding:6px 14px;
+    color:var(--accent); font-size:1.6rem; font-weight:700;
+    border-radius:8px; outline:none; cursor:text;
+    text-align:center; min-width:280px; transition:.2s;
+    white-space:nowrap;
+  }
+  .title-editable:hover{background:rgba(56,189,248,.06);}
+  .title-editable:focus{background:var(--panel2); box-shadow:0 0 0 2px var(--accent);}
+  .year-input{
+    width:88px; padding:8px; font-size:1rem; font-weight:700;
+    color:var(--accent2); background:var(--panel2);
+    border:1px solid var(--border); border-radius:6px;
+    text-align:center; font-family:inherit; outline:none;
+  }
+  .year-input:focus{border-color:var(--accent2);}
+
+  .gantt-wrap{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:14px; overflow-x:auto;
+  }
+  table.gantt{width:100%; border-collapse:collapse; font-size:.8rem; min-width:1250px;}
+  table.gantt th,table.gantt td{
+    border-bottom:1px solid var(--border);
+    padding:6px 4px; text-align:center; vertical-align:middle;
+  }
+  table.gantt th{
+    background:var(--panel2); color:var(--accent); font-weight:600;
+    position:sticky; top:0; z-index:2;
+  }
+  table.gantt th.left,table.gantt td.left{text-align:left;}
+  table.gantt .task-name{
+    background:transparent; border:none; color:var(--text);
+    font-size:.8rem; width:100%; padding:2px;
+  }
+  table.gantt .task-name:focus{outline:1px solid var(--accent); border-radius:4px;}
+  .progress-bar{height:6px; background:#1b2536; border-radius:3px; overflow:hidden; margin-top:3px;}
+  .progress-fill{height:100%; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:.3s;}
+  .bar-track{position:relative; height:22px; background:#1b2536; border-radius:4px; overflow:hidden; margin:2px 0;}
+  .bar-fill{
+    position:absolute; top:2px; bottom:2px;
+    background:linear-gradient(90deg,var(--bar),#0ea5e9);
+    border-radius:4px; box-shadow:0 0 6px rgba(56,189,248,.6);
+    display:flex; align-items:center; justify-content:center;
+    color:#0f172a; font-size:.6rem; font-weight:700;
+    overflow:hidden; white-space:nowrap;
+  }
+  .bar-fill.dependent{background:linear-gradient(90deg,#a78bfa,#8b5cf6); box-shadow:0 0 6px rgba(139,92,246,.6);}
+  .today-line{position:absolute; top:0; bottom:0; width:2px; background:var(--warn); box-shadow:0 0 6px var(--warn); z-index:3;}
+  .holiday-mark{position:absolute; top:0; bottom:0; width:2px; background:var(--holiday); opacity:.7;}
+  .clock{
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:.68rem; color:var(--muted); padding:2px 6px;
+    background:#1b2536; border-radius:10px; border:1px solid var(--border);
+  }
+  .clock::before{content:"⏱";}
+  .tag{
+    display:inline-block; padding:1px 7px; border-radius:10px;
+    font-size:.68rem; background:var(--panel2); border:1px solid var(--border);
+  }
+  .empty{color:var(--muted); font-style:italic; text-align:center; padding:20px;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:.72rem; color:var(--muted); margin-top:10px;}
+  .legend span::before{
+    content:""; display:inline-block; width:12px; height:12px;
+    border-radius:3px; margin-right:5px; vertical-align:middle;
+  }
+  .legend .l1::before{background:var(--bar);}
+  .legend .l2::before{background:var(--warn);}
+  .legend .l3::before{background:var(--accent2);}
+  .legend .l4::before{background:#8b5cf6;}
+  .legend .l5::before{background:var(--holiday);}
+
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;}
+  .toolbar button{
+    padding:9px 16px; border-radius:8px; border:none;
+    cursor:pointer; font-weight:600; font-size:.85rem; transition:.2s;
+  }
+  .toolbar button:hover{filter:brightness(1.15);}
+  .btn-pdf{background:#dc2626; color:#fff;}
+  .btn-xls{background:#16a34a; color:#fff;}
+  .btn-json{background:var(--accent); color:#0f172a;}
+  .btn-ghost{background:transparent; border:1px solid var(--border); color:var(--text);}
+
+  footer{
+    text-align:center; padding:14px 10px; font-size:.72rem;
+    color:var(--muted); border-top:1px solid var(--border);
+    background:var(--panel); font-style:italic; letter-spacing:.3px;
+  }
+  footer input{
+    background:transparent; border:none; color:var(--muted);
+    font-size:.72rem; font-style:italic; text-align:center;
+    width:340px; max-width:85vw;
+  }
+  footer input:focus{outline:1px dashed var(--accent); border-radius:4px;}
+
+  @media (max-width:900px){
+    .app{flex-direction:column;}
+    .sidebar{width:100%; position:relative; max-height:none;}
+    .sidebar.hidden{margin-left:0; height:0; padding:0; overflow:hidden;}
+    .main{padding-top:70px;}
+  }
+</style>
+</head>
+<body>
+
+<button class="hamburger-btn" onclick="toggleSidebar()" title="Mostrar/ocultar menú">☰</button>
+
+<div class="app">
+
+  <aside class="sidebar hidden" id="sidebar">
+    <div class="sidebar-content">
+
+      <div class="section">
+        <h3>👥 Agregar Personal</h3>
+        <input id="personName" placeholder="Nombre completo">
+        <input id="personRole" placeholder="Cargo (ej: Jefe de Bodega)">
+        <button onclick="addPerson()">+ Agregar persona</button>
+        <div class="mini-list" id="personList"></div>
+      </div>
+
+      <div class="section">
+        <h3>📋 Agregar Tarea</h3>
+        <input id="taskName" placeholder="Nombre de la tarea">
+        <select id="taskResponsible"><option value="">-- Responsable --</option></select>
+        <select id="taskPriority">
+          <option value="Alta">Prioridad Alta</option>
+          <option value="Media" selected>Prioridad Media</option>
+          <option value="Baja">Prioridad Baja</option>
+        </select>
+        <label style="font-size:.72rem;color:var(--muted)">Fecha inicio</label>
+        <input type="date" id="taskStart">
+        <label style="font-size:.72rem;color:var(--muted)">Fecha término</label>
+        <input type="date" id="taskEnd">
+        <select id="taskDependency"><option value="">-- Sin dependencia --</option></select>
+        <button onclick="addTask()">+ Agregar tarea</button>
+        <div class="mini-list" id="taskList"></div>
+      </div>
+
+      <div class="section">
+        <h3>🎉 Feriados</h3>
+        <input type="date" id="holidayDate">
+        <input id="holidayName" placeholder="Nombre del feriado">
+        <button onclick="addHoliday()">+ Agregar feriado</button>
+        <div class="mini-list" id="holidayList"></div>
+      </div>
+
+      <div class="section">
+        <h3>💾 Exportar</h3>
+        <button class="success" onclick="exportPDF()">📄 Exportar PDF</button>
+        <button class="success" onclick="exportExcel()">📊 Exportar Excel</button>
+        <button class="ghost" onclick="exportJSON()">💾 Guardar JSON</button>
+        <button class="ghost" onclick="document.getElementById('importFile').click()">📂 Importar JSON</button>
+        <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
+        <button class="danger" onclick="resetAll()">🗑️ Reiniciar todo</button>
+      </div>
+
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="header">
+      <h1 class="title-editable" contenteditable="true" spellcheck="false"
+          oninput="updateTitle(this.textContent)">Carta Gantt Anual — Bodega</h1>
+      <input class="year-input" id="yearInput" type="number" min="2000" max="2100" onchange="changeYear(this.value)">
+    </div>
+
+    <div class="gantt-wrap" id="ganttWrap">
+      <table class="gantt" id="ganttTable">
+        <thead>
+          <tr>
+            <th class="left" style="min-width:200px;">Tarea / Actividad</th>
+            <th style="min-width:120px;">Responsable</th>
+            <th style="min-width:70px;">Prioridad</th>
+            <th style="min-width:80px;">Designada</th>
+            <th style="min-width:80px;">Plazo</th>
+            <th style="min-width:220px;">Línea de tiempo (12 meses)</th>
+            <th style="min-width:80px;">Progreso</th>
+            <th style="min-width:50px;">X</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="legend">
+        <span class="l1">Barra de tarea</span>
+        <span class="l2">Hoy</span>
+        <span class="l3">Progreso</span>
+        <span class="l4">Dependencia</span>
+        <span class="l5">Feriado</span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn-pdf" onclick="exportPDF()">📄 Exportar PDF</button>
+      <button class="btn-xls" onclick="exportExcel()">📊 Exportar Excel</button>
+      <button class="btn-json" onclick="exportJSON()">💾 Guardar JSON</button>
+      <button class="btn-ghost" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <input id="copyrightInput" value="© Derechos de creador: Lahional Ávila" onchange="saveCopyright(this.value)">
+</footer>
+
+<script>
+/* ================= ESTADO ================= */
+const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const STORAGE_KEY = "carta_gantt_bodega_v4";
+let state = {
+  people: [], tasks: [], holidays: [],
+  title: "Carta Gantt Anual — Bodega",
+  copyright: "© Derechos de creador: Lahional Ávila",
+  year: new Date().getFullYear()
+};
+
+/* ================= PERSISTENCIA ================= */
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function load(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(raw){ try{ state = JSON.parse(raw); }catch(e){} }
+  if(!state.people) state.people = [];
+  if(!state.tasks) state.tasks = [];
+  if(!state.holidays) state.holidays = [];
+  if(!state.title) state.title = "Carta Gantt Anual — Bodega";
+  if(!state.copyright) state.copyright = "© Derechos de creador: Lahional Ávila";
+  if(!state.year) state.year = new Date().getFullYear();
+}
+
+/* ================= HELPERS ================= */
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function getPerson(id){ return state.people.find(p=>p.id===id) || null; }
+function getTask(id){ return state.tasks.find(t=>t.id===id) || null; }
+function escapeHtml(str){
+  if(str==null) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+}
+function fmtDate(d){
+  if(!d) return "-";
+  const dt = new Date(d);
+  if(isNaN(dt)) return "-";
+  return dt.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'});
+}
+function daysBetween(a,b){
+  if(!a||!b) return null;
+  const d1 = new Date(a), d2 = new Date(b);
+  if(isNaN(d1)||isNaN(d2)) return null;
+  return Math.max(0, Math.round((d2-d1)/(1000*60*60*24)));
+}
+function dayToPct(dateStr){
+  const d = new Date(dateStr);
+  const start = new Date(state.year, 0, 1);
+  const end = new Date(state.year + 1, 0, 1);
+  if(d < start) return 0;
+  if(d >= end) return 100;
+  return ((d - start) / (end - start)) * 100;
+}
+function getActiveMonths(task){
+  const months = Array(12).fill(false);
+  if(!task.start || !task.end) return months;
+  const s = new Date(task.start), e = new Date(task.end);
+  for(let m=0; m<12; m++){
+    const mStart = new Date(state.year, m, 1);
+    const mEnd = new Date(state.year, m+1, 0);
+    if(s <= mEnd && e >= mStart) months[m] = true;
+  }
+  return months;
+}
+
+/* ================= SIDEBAR / TÍTULO / AÑO ================= */
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('hidden'); }
+function updateTitle(text){ state.title = text; save(); }
+function changeYear(y){
+  const n = parseInt(y);
+  if(isNaN(n) || n < 2000 || n > 2100) return;
+  state.year = n;
+  document.getElementById('yearInput').value = n;
+  renderTasks(); save();
+}
+function saveCopyright(val){ state.copyright = val; save(); }
+
+/* ================= PERSONAL ================= */
+function addPerson(){
+  const name = document.getElementById('personName').value.trim();
+  const role = document.getElementById('personRole').value.trim();
+  if(!name || !role){ alert("Ingresa nombre y cargo."); return; }
+  state.people.push({id:uid(), name, role});
+  document.getElementById('personName').value = '';
+  document.getElementById('personRole').value = '';
+  renderAll(); save();
+}
+function deletePerson(id){
+  if(!confirm("¿Eliminar esta persona?")) return;
+  state.people = state.people.filter(p=>p.id!==id);
+  state.tasks.forEach(t=>{ if(t.responsibleId===id) t.responsibleId = ""; });
+  renderAll(); save();
+}
+
+/* ================= TAREAS ================= */
+function addTask(){
+  const name = document.getElementById('taskName').value.trim();
+  const responsibleId = document.getElementById('taskResponsible').value;
+  const priority = document.getElementById('taskPriority').value;
+  const start = document.getElementById('taskStart').value;
+  const end = document.getElementById('taskEnd').value;
+  const dependency = document.getElementById('taskDependency').value;
+  if(!name){ alert("Ingresa el nombre de la tarea."); return; }
+  if(start && end && new Date(end) < new Date(start)){
+    alert("La fecha de término no puede ser anterior a la de inicio."); return;
+  }
+  state.tasks.push({
+    id: uid(), name, responsibleId, priority,
+    start: start || "", end: end || "",
+    dependency: dependency || "",
+    createdAt: new Date().toISOString(),
+    progress: 0
+  });
+  document.getElementById('taskName').value = '';
+  document.getElementById('taskStart').value = '';
+  document.getElementById('taskEnd').value = '';
+  document.getElementById('taskDependency').value = '';
+  renderAll(); save();
+}
+function deleteTask(id){
+  if(!confirm("¿Eliminar esta tarea?")) return;
+  state.tasks = state.tasks.filter(t=>t.id!==id);
+  state.tasks.forEach(t=>{ if(t.dependency===id) t.dependency=""; });
+  renderAll(); save();
+}
+function updateTask(id, field, value){
+  const t = getTask(id);
+  if(!t) return;
+  t[field] = value;
+  if(field==='progress') renderTasks();
+  save();
+}
+
+/* ================= FERIADOS ================= */
+function addHoliday(){
+  const date = document.getElementById('holidayDate').value;
+  const name = document.getElementById('holidayName').value.trim();
+  if(!date){ alert("Ingresa la fecha del feriado."); return; }
+  state.holidays.push({id:uid(), date, name: name || "Feriado"});
+  document.getElementById('holidayDate').value = '';
+  document.getElementById('holidayName').value = '';
+  renderAll(); save();
+}
+function deleteHoliday(id){
+  state.holidays = state.holidays.filter(h=>h.id!==id);
+  renderAll(); save();
+}
+
+/* ================= RENDER ================= */
+function renderAll(){
+  renderPeopleList();
+  renderTaskList();
+  renderHolidaysList();
+  renderResponsibleSelect();
+  renderDependencySelect();
+  renderTasks();
+  document.getElementById('copyrightInput').value = state.copyright;
+  document.getElementById('yearInput').value = state.year;
+  const titleEl = document.querySelector('.title-editable');
+  if(state.title && titleEl.textContent !== state.title){
+    titleEl.textContent = state.title;
+  }
+}
+function renderPeopleList(){
+  const el = document.getElementById('personList');
+  if(state.people.length===0){ el.innerHTML = '<div class="empty">Sin personal</div>'; return; }
+  el.innerHTML = state.people.map(p=>
+    `<div><span>${escapeHtml(p.name)} <small>(${escapeHtml(p.role)})</small></span>
+     <span class="del" onclick="deletePerson('${p.id}')">✕</span></div>`
+  ).join('');
+}
+function renderTaskList(){
+  const el = document.getElementById('taskList');
+  if(state.tasks.length===0){ el.innerHTML = '<div class="empty">Sin tareas</div>'; return; }
+  el.innerHTML = state.tasks.map(t=>
+    `<div><span>${escapeHtml(t.name)}</span>
+     <span class="del" onclick="deleteTask('${t.id}')">✕</span></div>`
+  ).join('');
+}
+function renderHolidaysList(){
+  const el = document.getElementById('holidayList');
+  if(state.holidays.length===0){ el.innerHTML = '<div class="empty">Sin feriados</div>'; return; }
+  el.innerHTML = state.holidays
+    .slice().sort((a,b)=> new Date(a.date)-new Date(b.date))
+    .map(h=>`<div><span>${fmtDate(h.date)} — ${escapeHtml(h.name)}</span>
+       <span class="del" onclick="deleteHoliday('${h.id}')">✕</span></div>`).join('');
+}
+function renderResponsibleSelect(){
+  const sel = document.getElementById('taskResponsible');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- Responsable --</option>';
+  state.people.forEach(p=>{
+    sel.innerHTML += `<option value="${p.id}" ${p.id===current?'selected':''}>${escapeHtml(p.name)} (${escapeHtml(p.role)})</option>`;
+  });
+}
+function renderDependencySelect(){
+  const sel = document.getElementById('taskDependency');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- Sin dependencia --</option>';
+  state.tasks.forEach(t=>{
+    sel.innerHTML += `<option value="${t.id}" ${t.id===current?'selected':''}>${escapeHtml(t.name)}</option>`;
+  });
+}
+function renderTasks(){
+  const tbody = document.querySelector('#ganttTable tbody');
+  tbody.innerHTML = '';
+  if(state.tasks.length===0){
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">No hay tareas. Agrégalas desde el menú ☰</td></tr>`;
+    return;
+  }
+  const year = state.year;
+  const today = new Date();
+  const isCurrentYear = today.getFullYear() === year;
+  const todayPct = isCurrentYear ? dayToPct(today.toISOString().slice(0,10)) : null;
+
+  state.tasks.forEach(t=>{
+    const person = getPerson(t.responsibleId);
+    const plazo = daysBetween(t.start, t.end);
+    const tr = document.createElement('tr');
+    let html = `<td class="left"><input class="task-name" value="${escapeHtml(t.name)}" onchange="updateTask('${t.id}','name',this.value)"></td>`;
+    html += `<td>${person ? `<span class="tag">${escapeHtml(person.name)}</span><br><small>${escapeHtml(person.role)}</small>` : '<span class="tag">Sin asignar</span>'}</td>`;
+    const colors = {Alta:'#ef4444', Media:'#f59e0b', Baja:'#22c55e'};
+    html += `<td><span class="tag" style="color:${colors[t.priority]||'#94a3b8'}; border-color:${colors[t.priority]||'#334155'}">${t.priority||'-'}</span></td>`;
+    const created = t.createdAt ? new Date(t.createdAt) : new Date();
+    html += `<td><span class="clock" title="Fecha de designación">${created.toLocaleDateString('es-CL',{day:'2-digit',month:'short'})}</span></td>`;
+    html += `<td>${plazo!==null ? `<span class="clock" title="Plazo en días">${plazo} días</span>` : '<span class="tag">—</span>'}</td>`;
+    let barHtml = `<td><div class="bar-track">`;
+    if(t.start && t.end){
+      const left = dayToPct(t.start);
+      const right = dayToPct(t.end);
+      const width = Math.max(0, right - left);
+      const cls = t.dependency ? "bar-fill dependent" : "bar-fill";
+      barHtml += `<div class="${cls}" style="left:${left}%; width:${width}%">${width>8?`${plazo}d`:''}</div>`;
+    } else {
+      barHtml += `<div class="bar-fill" style="left:0; width:0"></div>`;
+    }
+    state.holidays.forEach(h=>{
+      const p = dayToPct(h.date);
+      barHtml += `<div class="holiday-mark" style="left:${p}%" title="${escapeHtml(h.name)}"></div>`;
+    });
+    if(todayPct!==null){
+      barHtml += `<div class="today-line" style="left:${todayPct}%"></div>`;
+    }
+    barHtml += `</div></td>`;
+    html += barHtml;
+    html += `<td class="progress-cell">
+      <input type="range" min="0" max="100" value="${t.progress||0}" oninput="updateTask('${t.id}','progress',this.value)" style="width:70px;">
+      <div class="progress-bar"><div class="progress-fill" style="width:${t.progress||0}%"></div></div>
+      <small>${t.progress||0}%</small>
+    </td>`;
+    html += `<td><button class="danger" style="padding:4px 8px;" onclick="deleteTask('${t.id}')">✕</button></td>`;
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ================= EXPORTAR PDF (PRO) ================= */
+function exportPDF(){
+  if(typeof html2pdf === 'undefined'){
+    alert("La librería de PDF aún no carga. Verifica tu conexión a internet."); return;
+  }
+  const year = state.year;
+  const title = state.title || "Carta Gantt Anual — Bodega";
+
+  let rowsHtml = '';
+  state.tasks.forEach((t,i)=>{
+    const person = getPerson(t.responsibleId);
+    const plazo = daysBetween(t.start, t.end);
+    const bg = i % 2 === 0 ? '#F1F5F9' : '#FFFFFF';
+    const prioColors = {Alta:'#DC2626', Media:'#F59E0B', Baja:'#16A34A'};
+    const prioBg = prioColors[t.priority] || '#64748B';
+
+    let barHtml = '';
+    if(t.start && t.end){
+      const left = dayToPct(t.start);
+      const right = dayToPct(t.end);
+      const width = Math.max(0.8, right - left);
+      barHtml = `<div style="position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;background:linear-gradient(90deg,#0EA5E9,#38BDF8);border-radius:3px;box-shadow:0 1px 3px rgba(14,165,233,.5);"></div>`;
+    }
+    let gridHtml = '';
+    for(let m=1; m<12; m++){
+      gridHtml += `<div style="position:absolute;left:${(m/12)*100}%;top:0;bottom:0;width:1px;background:#CBD5E1;"></div>`;
+    }
+    let todayHtml = '';
+    const today = new Date();
+    if(today.getFullYear() === year){
+      const pct = dayToPct(today.toISOString().slice(0,10));
+      todayHtml = `<div style="position:absolute;left:${pct}%;top:-3px;bottom:-3px;width:2px;background:#F59E0B;"></div>`;
+    }
+
+    rowsHtml += `
+      <tr style="background:${bg};">
+        <td style="padding:7px 8px;border:1px solid #CBD5E1;font-size:9px;color:#0F172A;font-weight:600;vertical-align:middle;">${escapeHtml(t.name)}</td>
+        <td style="padding:7px 8px;border:1px solid #CBD5E1;font-size:8px;color:#1E293B;vertical-align:middle;">
+          <div style="font-weight:600;">${person ? escapeHtml(person.name) : '—'}</div>
+          <div style="color:#64748B;font-size:7px;">${person ? escapeHtml(person.role) : ''}</div>
+        </td>
+        <td style="padding:6px 4px;border:1px solid #CBD5E1;text-align:center;vertical-align:middle;">
+          <span style="background:${prioBg};color:#FFFFFF;padding:2px 7px;border-radius:8px;font-size:8px;font-weight:700;display:inline-block;">${t.priority || '—'}</span>
+        </td>
+        <td style="padding:6px 4px;border:1px solid #CBD5E1;font-size:8px;text-align:center;color:#1E293B;vertical-align:middle;">${plazo !== null ? plazo + ' d' : '—'}</td>
+        <td style="padding:6px 4px;border:1px solid #CBD5E1;font-size:9px;text-align:center;font-weight:700;color:#0EA5E9;vertical-align:middle;">${t.progress || 0}%</td>
+        <td style="padding:6px 4px;border:1px solid #CBD5E1;vertical-align:middle;">
+          <div style="position:relative;height:16px;background:#E2E8F0;border-radius:3px;">
+            ${gridHtml}${barHtml}${todayHtml}
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  const monthsHeaderCells = MONTHS.map(m=>
+    `<th style="padding:3px 0;font-size:7px;font-weight:700;color:#475569;text-align:center;background:#E2E8F0;border-right:1px solid #CBD5E1;border-bottom:1px solid #CBD5E1;">${m}</th>`
+  ).join('');
+
+  const htmlContent = `
+    <div style="font-family:Arial,Helvetica,sans-serif;background:#FFFFFF;color:#0F172A;padding:22px;width:1000px;box-sizing:border-box;">
+      <div style="text-align:center;margin-bottom:14px;border-bottom:3px solid #0EA5E9;padding-bottom:12px;">
+        <div style="font-size:20px;font-weight:800;color:#0F172A;letter-spacing:0.4px;">
+          ${escapeHtml(title)} <span style="color:#0EA5E9;">${year}</span>
+        </div>
+        <div style="font-size:9px;color:#64748B;font-style:italic;margin-top:5px;">${escapeHtml(state.copyright)}</div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:22%;">
+          <col style="width:15%;">
+          <col style="width:8%;">
+          <col style="width:7%;">
+          <col style="width:7%;">
+          <col style="width:41%;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th colspan="6" style="border:0;padding:0;">
+              <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+                <colgroup>${Array(12).fill('<col style="width:8.333%;">').join('')}</colgroup>
+                <tr>${monthsHeaderCells}</tr>
+              </table>
+            </th>
+          </tr>
+          <tr style="background:#0F172A;color:#FFFFFF;">
+            <th style="padding:9px 8px;border:1px solid #0F172A;font-size:9px;font-weight:700;text-align:left;">Tarea / Actividad</th>
+            <th style="padding:9px 8px;border:1px solid #0F172A;font-size:9px;font-weight:700;">Responsable</th>
+            <th style="padding:9px 8px;border:1px solid #0F172A;font-size:9px;font-weight:700;">Prioridad</th>
+            <th style="padding:9px 8px;border:1px solid #0F172A;font-size:9px;font-weight:700;">Plazo</th>
+            <th style="padding:9px 8px;border:1px solid #0F172A;font-size:9px;font-weight:700;">Prog.</th>
+            <th style="padding:9px 8px;border:1px solid #0F172A;font-size:9px;font-weight:700;">Línea de tiempo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml || '<tr><td colspan="6" style="padding:24px;text-align:center;color:#94A3B8;font-style:italic;border:1px solid #CBD5E1;">Sin tareas registradas</td></tr>'}
+        </tbody>
+      </table>
+
+      <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:8px;color:#64748B;">
+        <div>
+          <span style="display:inline-block;width:10px;height:10px;background:#0EA5E9;border-radius:2px;vertical-align:middle;margin-right:4px;"></span> Duración de tarea
+          <span style="display:inline-block;width:2px;height:10px;background:#F59E0B;vertical-align:middle;margin:0 4px 0 12px;"></span> Fecha actual
+          <span style="display:inline-block;width:2px;height:10px;background:#CBD5E1;vertical-align:middle;margin:0 4px 0 12px;"></span> División mensual
+        </div>
+        <div>Total de tareas: <b style="color:#0EA5E9;">${state.tasks.length}</b> &nbsp;|&nbsp; Generado: <b>${new Date().toLocaleDateString('es-CL')}</b></div>
+      </div>
+    </div>`;
+
+  const temp = document.createElement('div');
+  temp.style.cssText = 'position:fixed;left:-99999px;top:0;';
+  temp.innerHTML = htmlContent;
+  document.body.appendChild(temp);
+
+  const opt = {
+    margin: [8, 8, 8, 8],
+    filename: `Carta_Gantt_${year}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, backgroundColor: '#FFFFFF', useCORS: true, logging: false },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+  };
+
+  html2pdf().set(opt).from(temp.firstElementChild).save()
+    .then(()=>{ document.body.removeChild(temp); })
+    .catch(err=>{
+      console.error(err);
+      document.body.removeChild(temp);
+      alert('Error al generar PDF: ' + err.message);
+    });
+}
+
+/* ================= EXPORTAR EXCEL (PRO) ================= */
+async function exportExcel(){
+  if(typeof ExcelJS === 'undefined'){
+    alert("La librería ExcelJS aún no carga. Verifica tu conexión a internet."); return;
+  }
+  const year = state.year;
+  const title = state.title || "Carta Gantt Anual — Bodega";
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = state.copyright;
+  wb.created = new Date();
+  const ws = wb.addWorksheet('Carta Gantt', {
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 4 }]
+  });
+
+  const totalCols = 9 + 12;
+  ws.columns = [
+    { width: 30 }, { width: 20 }, { width: 20 },
+    { width: 12 }, { width: 14 }, { width: 13 }, { width: 13 },
+    { width: 12 }, { width: 11 },
+    ...Array(12).fill({ width: 6 })
+  ];
+
+  ws.mergeCells(1, 1, 1, totalCols);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = `${title} ${year}`;
+  titleCell.font = { name:'Calibri', bold:true, size:16, color:{argb:'FFFFFFFF'} };
+  titleCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF0F172A'} };
+  titleCell.alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(1).height = 36;
+
+  ws.mergeCells(2, 1, 2, totalCols);
+  const copyCell = ws.getCell(2, 1);
+  copyCell.value = state.copyright;
+  copyCell.font = { name:'Calibri', italic:true, size:9, color:{argb:'FF64748B'} };
+  copyCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF8FAFC'} };
+  copyCell.alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(2).height = 20;
+
+  ws.getRow(3).height = 6;
+
+  const headers = ['Tarea / Actividad','Responsable','Cargo','Prioridad','Designada','Inicio','Término','Plazo (días)','Progreso', ...MONTHS];
+  const headerRow = ws.getRow(4);
+  headers.forEach((h,i)=>{
+    const cell = headerRow.getCell(i+1);
+    cell.value = h;
+    cell.font = { name:'Calibri', bold:true, size:10, color:{argb:'FFFFFFFF'} };
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1E293B'} };
+    cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    cell.border = {
+      top:{style:'thin',color:{argb:'FF0F172A'}},
+      bottom:{style:'thin',color:{argb:'FF0F172A'}},
+      left:{style:'thin',color:{argb:'FF334155'}},
+      right:{style:'thin',color:{argb:'FF334155'}}
+    };
+  });
+  headerRow.height = 34;
+
+  state.tasks.forEach((t, idx)=>{
+    const person = getPerson(t.responsibleId);
+    const created = t.createdAt ? new Date(t.createdAt) : new Date();
+    const plazo = daysBetween(t.start, t.end);
+    const rowNum = 5 + idx;
+    const row = ws.getRow(rowNum);
+    const bg = idx % 2 === 0 ? 'FFF1F5F9' : 'FFFFFFFF';
+    const activeMonths = getActiveMonths(t);
+
+    const values = [
+      t.name,
+      person ? person.name : '',
+      person ? person.role : '',
+      t.priority || '',
+      created.toLocaleDateString('es-CL'),
+      t.start || '',
+      t.end || '',
+      plazo !== null ? plazo : '',
+      (t.progress || 0) + '%',
+      ...activeMonths.map(a => a ? '✓' : '')
+    ];
+
+    values.forEach((val, i)=>{
+      const cell = row.getCell(i+1);
+      cell.value = val;
+      cell.font = { name:'Calibri', size:10, color:{argb:'FF1E293B'} };
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:bg} };
+      cell.border = {
+        top:{style:'thin',color:{argb:'FFCBD5E1'}},
+        bottom:{style:'thin',color:{argb:'FFCBD5E1'}},
+        left:{style:'thin',color:{argb:'FFCBD5E1'}},
+        right:{style:'thin',color:{argb:'FFCBD5E1'}}
+      };
+      if(i === 0){
+        cell.alignment = { horizontal:'left', vertical:'middle', wrapText:true, indent:1 };
+        cell.font = { name:'Calibri', size:10, bold:true, color:{argb:'FF0F172A'} };
+      } else if(i <= 2){
+        cell.alignment = { horizontal:'left', vertical:'middle', wrapText:true };
+      } else if(i >= 9){
+        cell.alignment = { horizontal:'center', vertical:'middle' };
+        if(val === '✓'){
+          cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF38BDF8'} };
+          cell.font = { name:'Calibri', size:11, bold:true, color:{argb:'FFFFFFFF'} };
+        }
+      } else {
+        cell.alignment = { horizontal:'center', vertical:'middle' };
+      }
+    });
+
+    const prioCell = row.getCell(4);
+    const prioColors = { 'Alta':'FFDC2626', 'Media':'FFF59E0B', 'Baja':'FF16A34A' };
+    if(prioColors[t.priority]){
+      prioCell.font = { name:'Calibri', size:10, bold:true, color:{argb:'FFFFFFFF'} };
+      prioCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:prioColors[t.priority]} };
+    }
+    const progCell = row.getCell(9);
+    progCell.font = { name:'Calibri', size:10, bold:true, color:{argb:'FF0EA5E9'} };
+
+    row.height = 24;
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Carta_Gantt_${year}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ================= JSON ================= */
+function exportJSON(){
+  const data = JSON.stringify(state, null, 2);
+  const blob = new Blob([data], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Carta_Gantt_${state.year}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importJSON(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const data = JSON.parse(e.target.result);
+      if(!data.people || !data.tasks) throw new Error("Formato inválido");
+      state = data;
+      if(!state.holidays) state.holidays = [];
+      if(!state.title) state.title = "Carta Gantt Anual — Bodega";
+      if(!state.copyright) state.copyright = "© Derechos de creador: Lahional Ávila";
+      renderAll(); save();
+      alert("Datos importados correctamente.");
+    }catch(err){ alert("Error: " + err.message); }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+}
+function resetAll(){
+  if(!confirm("¿Borrar TODOS los datos?")) return;
+  state = {
+    people: [], tasks: [], holidays: [],
+    title: "Carta Gantt Anual — Bodega",
+    copyright: "© Derechos de creador: Lahional Ávila",
+    year: new Date().getFullYear()
+  };
+  renderAll(); save();
+}
+
+/* ================= INICIO ================= */
+load();
+if(state.people.length===0 && state.tasks.length===0){
+  const p1 = {id:uid(), name:"Carlos Pérez", role:"Jefe de Bodega"};
+  const p2 = {id:uid(), name:"María González", role:"Supervisora de Inventario"};
+  const p3 = {id:uid(), name:"Juan Soto", role:"Operario de Bodega"};
+  state.people = [p1,p2,p3];
+  const y = state.year;
+  const t1 = {id:uid(), name:"Inventario general anual", responsibleId:p1.id, priority:"Alta",
+     start:`${y}-01-05`, end:`${y}-02-15`, dependency:"", createdAt:new Date().toISOString(), progress:100};
+  const t2 = {id:uid(), name:"Recepción de mercadería mensual", responsibleId:p3.id, priority:"Media",
+     start:`${y}-01-01`, end:`${y}-12-31`, dependency:"", createdAt:new Date().toISOString(), progress:60};
+  const t3 = {id:uid(), name:"Auditoría de stock trimestral", responsibleId:p2.id, priority:"Alta",
+     start:`${y}-03-01`, end:`${y}-12-15`, dependency:t1.id, createdAt:new Date().toISOString(), progress:25};
+  const t4 = {id:uid(), name:"Mantención de estanterías", responsibleId:p3.id, priority:"Baja",
+     start:`${y}-05-10`, end:`${y}-11-20`, dependency:"", createdAt:new Date().toISOString(), progress:0};
+  state.tasks = [t1,t2,t3,t4];
+  state.holidays = [
+    {id:uid(), date:`${y}-01-01`, name:"Año Nuevo"},
+    {id:uid(), date:`${y}-05-01`, name:"Día del Trabajo"},
+    {id:uid(), date:`${y}-09-18`, name:"Fiestas Patrias"},
+    {id:uid(), date:`${y}-12-25`, name:"Navidad"}
+  ];
+  save();
+}
+renderAll();
+</script>
+</body>
+</html>
